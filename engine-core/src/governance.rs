@@ -23,7 +23,6 @@ const KEY_MIN_STAKE:  Symbol = symbol_short!("MINSTAKE");
 const KEY_STAKE_TOK:  Symbol = symbol_short!("STKTOK");
 /// Ledgers to wait after full approval before execution (~1 hour on Stellar).
 const TIMELOCK_LEDGERS: u32 = 720;
-const SCALING_FACTOR: u64 = 10_000;
 
 #[contracterror]
 #[derive(Copy, Clone)]
@@ -52,7 +51,6 @@ pub fn init(
 ) {
     assert!(threshold <= signers.len(), "threshold > signer count");
     env.storage().instance().set(&KEY_SIGNERS, &signers);
-    env.storage().instance().set(&KEY_WEIGHTS, &weights);
     env.storage().instance().set(&KEY_THRESH, &threshold);
     env.storage().instance().set(&KEY_STAKE_TOK, &stake_token);
     env.storage().instance().set(&KEY_MIN_STAKE, &min_stake);
@@ -119,36 +117,9 @@ pub fn approve(env: &Env, signer: &Address, proposal_id: u64) {
         panic_with_error!(env, GovError::AlreadyApproved);
     }
     prop.approved_by.push_back(signer.clone());
-    
-    // Calculate total weight and approved weight
-    let mut total_weight: u64 = 0;
-    for i in 0..weights.len() {
-        let w = weights.get(i).unwrap();
-        total_weight = total_weight.checked_add(w as u64).unwrap_or_else(|| panic!("Total weight overflow"));
-    }
 
-    let mut approved_weight: u64 = 0;
-    for i in 0..signers.len() {
-        let s = signers.get(i).unwrap();
-        if prop.approved_by.contains(&s) {
-            let w = weights.get(i).unwrap();
-            approved_weight = approved_weight.checked_add(w as u64).unwrap_or_else(|| panic!("Approved weight overflow"));
-        }
-    }
-
-    // Perform strict fixed-point quorum verification
-    // approved_weight / total_weight >= threshold / SCALING_FACTOR
-    // => approved_weight * SCALING_FACTOR >= threshold * total_weight
-    let approved_weight_scaled = approved_weight
-        .checked_mul(SCALING_FACTOR)
-        .unwrap_or_else(|| panic!("Approved weight multiplication overflow"));
-    
-    let required_weight = (threshold as u64)
-        .checked_mul(total_weight)
-        .unwrap_or_else(|| panic!("Required weight multiplication overflow"));
-
-    // Transition to Approved when threshold is met
-    if approved_weight_scaled >= required_weight {
+    // Transition to Approved when count threshold is met
+    if prop.approved_by.len() >= threshold {
         prop.state = ProposalState::Approved;
         env.events().publish(
             (symbol_short!("GOV"), symbol_short!("approved")),
