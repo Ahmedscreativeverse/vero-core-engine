@@ -5,13 +5,13 @@
 //! full approval and execution, giving stakeholders a veto window.
 //!
 //! ## Proposal State Machine
-//! ```
+//! ```text
 //! Pending ─ (on approve, threshold met) → Approved ─ (on execute, timelock elapsed) → Executed
 //! ```
 //! Invalid transitions trigger contract panics.
 
 use soroban_sdk::{
-    contracttype, panic_with_error, symbol_short, vec, Address, Env, Map, Symbol, Vec,
+    contracterror, panic_with_error, symbol_short, vec, Address, Env, Map, Symbol, Vec,
 };
 
 use crate::types::{Proposal, ProposalState};
@@ -22,7 +22,7 @@ const KEY_THRESH:    Symbol = symbol_short!("THRESH");
 /// Ledgers to wait after full approval before execution (~1 hour on Stellar).
 const TIMELOCK_LEDGERS: u32 = 720;
 
-#[contracttype]
+#[contracterror]
 #[derive(Copy, Clone)]
 pub enum GovError {
     NotASigner         = 1,
@@ -35,19 +35,20 @@ pub enum GovError {
 
 /// Initialise governance with an ordered signer set and approval threshold.
 pub fn init(env: &Env, signers: Vec<Address>, threshold: u32) {
-    assert!(threshold as usize <= signers.len(), "threshold > signer count");
+    assert!(threshold <= (signers.len() as u32), "threshold > signer count");
     env.storage().instance().set(&KEY_SIGNERS, &signers);
     env.storage().instance().set(&KEY_THRESH, &threshold);
     let empty: Map<u64, (Proposal, u32)> = Map::new(env);
     env.storage().instance().set(&KEY_PROPOSALS, &empty);
 }
 
-fn load_proposals(env: &Env) -> Map<u64, (Proposal, u32)> {
+pub fn load_proposals(env: &Env) -> Map<u64, (Proposal, u32)> {
     env.storage().instance().get(&KEY_PROPOSALS).unwrap_or(Map::new(env))
 }
 
 /// Submit a new proposal. Returns the assigned proposal id.
 pub fn propose(env: &Env, mut proposal: Proposal) -> u64 {
+    crate::non_reentrant!(env);
     let signers: Vec<Address> = env.storage().instance().get(&KEY_SIGNERS).unwrap_or(vec![env]);
     if !signers.contains(&proposal.proposer) {
         panic_with_error!(env, GovError::NotASigner);
@@ -69,6 +70,7 @@ pub fn propose(env: &Env, mut proposal: Proposal) -> u64 {
 /// Record a signer's approval for `proposal_id`.
 /// Transitions state from Pending → Approved when threshold is met.
 pub fn approve(env: &Env, signer: &Address, proposal_id: u64) {
+    crate::non_reentrant!(env);
     signer.require_auth();
     let signers: Vec<Address> = env.storage().instance().get(&KEY_SIGNERS).unwrap_or(vec![env]);
     if !signers.contains(signer) {
@@ -107,6 +109,7 @@ pub fn approve(env: &Env, signer: &Address, proposal_id: u64) {
 /// Execute a proposal after threshold approvals and time-lock expiry.
 /// Transitions state from Approved → Executed.
 pub fn execute(env: &Env, proposal_id: u64) -> Proposal {
+    crate::non_reentrant!(env);
     let mut props = load_proposals(env);
     let (mut prop, unlock) = props.get(proposal_id).unwrap_or_else(|| {
         panic_with_error!(env, GovError::ProposalNotFound)
