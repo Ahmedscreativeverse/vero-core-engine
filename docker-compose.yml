@@ -1,0 +1,71 @@
+version: "3.9"
+
+# ── Full local vero-core-engine stack ──────────────────────────────────────
+# Usage:
+#   docker compose up -d           — start everything
+#   docker compose up -d stellar   — Stellar validator only
+#   docker compose logs -f bridge  — tail bridge logs
+#   docker compose down -v         — teardown + wipe volumes
+
+services:
+
+  # ── Stellar / Soroban local validator ──────────────────────────────────
+  stellar:
+    image: stellar/quickstart:latest
+    container_name: vero-stellar
+    ports:
+      - "8000:8000"   # Horizon HTTP
+      - "8001:8001"   # Soroban RPC
+    environment:
+      - NETWORK=local
+      - ENABLE_SOROBAN_RPC=true
+    volumes:
+      - stellar-data:/opt/stellar
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── engine-bridge (TypeScript) ──────────────────────────────────────────
+  bridge:
+    build:
+      context: ./engine-bridge
+      dockerfile: Dockerfile
+    container_name: vero-bridge
+    ports:
+      - "8080:8080"   # WebSocket (ZkStateSyncer)
+    environment:
+      - STELLAR_NETWORK=local
+      - RPC_URLS=http://stellar:8001
+      - CONTRACT_ID=${CONTRACT_ID:-}
+      - SIGNING_KEY=${SIGNING_KEY:-}
+      - GUARDIAN_ADDRESS=${GUARDIAN_ADDRESS:-}
+      - EVENT_CURSOR=${EVENT_CURSOR:-}
+      - PORT=8080
+      - LOG_LEVEL=info
+    depends_on:
+      stellar:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── engine-grpc (gRPC streaming API) ───────────────────────────────────
+  grpc:
+    build:
+      context: ./engine-grpc
+      dockerfile: Dockerfile
+    container_name: vero-grpc
+    ports:
+      - "50051:50051"  # gRPC
+    environment:
+      - BRIDGE_WS_URL=ws://bridge:8080
+      - PORT=50051
+      - LOG_LEVEL=info
+    depends_on:
+      - bridge
+    restart: unless-stopped
+
+volumes:
+  stellar-data:

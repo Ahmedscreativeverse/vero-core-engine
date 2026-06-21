@@ -10,6 +10,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CORE="$ROOT/engine-core"
 BRIDGE="$ROOT/engine-bridge"
+GRPC="$ROOT/engine-grpc"
 DOCS="$ROOT/docs"
 SECURITY_DIR="$ROOT/security"
 
@@ -25,6 +26,8 @@ scaffold() {
   mkdir -p \
     "$CORE/src" \
     "$BRIDGE/src/__tests__" \
+    "$GRPC/proto" \
+    "$GRPC/src/__tests__" \
     "$DOCS/adrs" \
     "$DOCS/incidents" \
     "$SECURITY_DIR" \
@@ -84,9 +87,24 @@ build_bridge() {
   log "engine-bridge build OK"
 }
 
+build_grpc() {
+  log "Building engine-grpc (TypeScript + proto)…"
+  if ! command -v node &>/dev/null; then
+    warn "node not found — skipping engine-grpc build"
+    return 0
+  fi
+  cd "$GRPC"
+  npm ci --silent
+  npm run proto:gen
+  npm run build -- --noEmitOnError
+  cd "$ROOT"
+  log "engine-grpc build OK"
+}
+
 build() {
   build_core
   build_bridge
+  build_grpc
 }
 
 # ── 3. HEALTH CHECK ──────────────────────────────────────────────────────────
@@ -113,6 +131,11 @@ health() {
   check "engine-bridge/src/nonce-manager.ts exists" test -f "$BRIDGE/src/nonce-manager.ts"
   check "engine-bridge/src/event-propagator.ts exists" test -f "$BRIDGE/src/event-propagator.ts"
   check "engine-bridge/src/heartbeat-monitor.ts exists" test -f "$BRIDGE/src/heartbeat-monitor.ts"
+  check "engine-grpc/proto/engine.proto exists"    test -f "$GRPC/proto/engine.proto"
+  check "engine-grpc/src/server.ts exists"         test -f "$GRPC/src/server.ts"
+  check "engine-grpc/src/client.ts exists"         test -f "$GRPC/src/client.ts"
+  check "docker-compose.yml exists"                test -f "$ROOT/docker-compose.yml"
+  check ".github/workflows/ci.yml exists"          test -f "$ROOT/.github/workflows/ci.yml"
   check "SECURITY.md exists"                       test -f "$ROOT/SECURITY.md"
   check ".github/ISSUE_TEMPLATE/feature_request.md exists" \
         test -f "$ROOT/.github/ISSUE_TEMPLATE/feature_request.md"
@@ -131,6 +154,9 @@ health() {
   # Tests (if dependencies installed)
   if [[ -d "$BRIDGE/node_modules" ]]; then
     check "engine-bridge tests pass" bash -c "cd '$BRIDGE' && npm test -- --passWithNoTests 2>&1 | grep -q 'Tests:'"
+  fi
+  if [[ -d "$GRPC/node_modules" ]]; then
+    check "engine-grpc tests pass" bash -c "cd '$GRPC' && npm test -- --passWithNoTests 2>&1 | grep -q 'Tests:'"
   fi
 
   if [[ $errors -eq 0 ]]; then

@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package vero.engine.v1;
+
+option java_package = "io.vero.engine.v1";
+
+// ── Messages ──────────────────────────────────────────────────────────────
+
+message EngineEvent {
+  string id          = 1;
+  string contract_id = 2;
+  repeated string topic = 3;
+  bytes  value       = 4;
+  uint32 ledger      = 5;
+  string timestamp   = 6;
+}
+
+message ZkStateUpdate {
+  string event_id    = 1;
+  string contract_id = 2;
+  uint32 ledger      = 3;
+  string timestamp   = 4;
+  bytes  raw         = 5;
+}
+
+message WatchRequest {
+  // Optional: filter to a specific contract ID. Empty = all contracts.
+  string contract_id = 1;
+  // Optional: only stream events whose first topic contains this substring.
+  string topic_filter = 2;
+  // Optional: resume from a specific event cursor.
+  string cursor = 3;
+}
+
+message HealthResponse {
+  string status        = 1;  // "ok" | "degraded"
+  uint32 live_rpc_nodes = 2;
+  string cursor        = 3;
+  uint64 uptime_sec    = 4;
+}
+
+message PingRequest  {}
+message PingResponse { string timestamp = 1; }
+
+// ── Service ───────────────────────────────────────────────────────────────
+
+service EngineService {
+  // Server-streaming: delivers EngineEvents as they arrive from Soroban RPC.
+  rpc WatchEvents (WatchRequest) returns (stream EngineEvent);
+
+  // Server-streaming: delivers ZK state-commitment updates only.
+  rpc WatchZkState (WatchRequest) returns (stream ZkStateUpdate);
+
+  // Unary: returns current health / cursor / RPC status.
+  rpc GetHealth (PingRequest) returns (HealthResponse);
+}

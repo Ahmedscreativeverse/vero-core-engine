@@ -217,6 +217,35 @@ RPC_URLS="$RPC_URLS" CONTRACT_ID="$CONTRACT_ID" \
 
 ---
 
+## engine-grpc API Reference
+
+### `EngineClient(address: string)`
+Typed gRPC client. All streaming methods return async iterators.
+
+```typescript
+import { EngineClient } from "@vero/engine-grpc";
+
+const client = new EngineClient("localhost:50051");
+
+// Stream all events for a contract
+for await (const event of client.watchEvents({ contract_id: CONTRACT_ID })) {
+  console.log(event.id, event.ledger);
+}
+
+// Stream ZK state-commitment updates only
+for await (const update of client.watchZkState()) {
+  console.log(update.event_id, update.raw);
+}
+
+// Unary health check
+const health = await client.getHealth();
+// { status: "ok", live_rpc_nodes: 2, cursor: "...", uptime_sec: 120 }
+
+client.close();
+```
+
+---
+
 ## engine-core API Reference
 
 ### `audit::validate_transition(env, commitment, payload)`
@@ -289,9 +318,9 @@ See [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) for the full milestone trac
 - [x] BUILD_ENGINE.sh automation
 - [x] SECURITY.md with incident response playbooks
 - [x] GitHub issue template (Gold Standard)
-- [ ] CI/CD workflow (GitHub Actions)
-- [ ] Docker Compose for full local stack
-- [ ] gRPC streaming API
+- [x] CI/CD workflow (GitHub Actions)
+- [x] Docker Compose for full local stack
+- [x] gRPC streaming API
 
 ---
 
