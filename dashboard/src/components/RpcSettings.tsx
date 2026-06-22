@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import {
   Activity,
   CheckCircle2,
@@ -58,6 +58,12 @@ export const RpcSettings: React.FC = () => {
   const [probing, setProbing] = useState(false);
   const [lastProbedAt, setLastProbedAt] = useState<string | null>(null);
 
+  // Stable ids so `aria-describedby` can link inputs to inline helper text
+  // and live status regions without colliding across multiple renders.
+  const formErrorId = useId();
+  const labelHelpId = useId();
+  const urlHelpId = useId();
+
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     const result = addNode(label, url);
@@ -111,8 +117,17 @@ export const RpcSettings: React.FC = () => {
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="SDF Testnet"
+            aria-describedby={
+              [labelHelpId, formError ? formErrorId : null]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
+            aria-invalid={formError ? true : undefined}
             className="w-full px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
           />
+          <p id={labelHelpId} className="sr-only">
+            Optional display name for the endpoint. Defaults to the URL if left blank.
+          </p>
         </div>
         <div>
           <label htmlFor="rpc-url" className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
@@ -124,9 +139,18 @@ export const RpcSettings: React.FC = () => {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://soroban-testnet.stellar.org"
+            aria-describedby={
+              [urlHelpId, formError ? formErrorId : null]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
+            aria-invalid={formError ? true : undefined}
             className="w-full px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
             required
           />
+          <p id={urlHelpId} className="sr-only">
+            Must be an http or https URL pointing to a Soroban or Horizon endpoint.
+          </p>
         </div>
         <button
           type="submit"
@@ -137,7 +161,12 @@ export const RpcSettings: React.FC = () => {
         </button>
       </form>
       {formError && (
-        <p className="mb-4 text-sm text-rose-600 dark:text-rose-400" role="alert">
+        <p
+          id={formErrorId}
+          className="mb-4 text-sm text-rose-600 dark:text-rose-400"
+          role="alert"
+          aria-live="polite"
+        >
           {formError}
         </p>
       )}
@@ -209,7 +238,11 @@ export const RpcSettings: React.FC = () => {
         </ul>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+      <div
+        className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         <span>
           Active endpoint:{" "}
           <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100">

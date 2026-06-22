@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useId, useMemo } from "react";
 import {
   Gauge,
   Pause,
@@ -96,6 +96,10 @@ const Sparkline: React.FC<SparklineProps> = ({
 export const PerformanceStats: React.FC = () => {
   const stats = usePerformanceStats();
 
+  // Stable ids for linking the sparklines to a screen-reader description
+  // so users get context without overwhelming the rendered output.
+  const panelStatusId = useId();
+
   return (
     <Card
       title="Network Performance"
@@ -150,6 +154,23 @@ export const PerformanceStats: React.FC = () => {
           icon={<Zap size={14} />}
         />
       </div>
+      {/* Separate live regions keep state changes (high-signal) cleanly
+          distinguishable from sample-count changes (low-signal) for AT users. */}
+      <p
+        id={panelStatusId + "-state"}
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {stats.running ? "Performance sampling is running." : "Performance sampling is paused."}
+      </p>
+      <p
+        id={panelStatusId + "-count"}
+        className="sr-only"
+        aria-live="off"
+      >
+        Showing {stats.samples.length} most recent samples.
+      </p>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/30">

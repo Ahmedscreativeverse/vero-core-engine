@@ -1,70 +1,99 @@
-use soroban_sdk::{contracttype, Address, BytesN};
+use soroban_sdk::{contracttype, contracterror, Address, BytesN, Map, Symbol, Val};
 
-/// Canonical state snapshot committed to a ZK audit cycle.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum TreasuryError {
+    InvalidBalance = 1,
+}
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum BurnError {
+    ZeroAddress = 1,
+}
+
+/// Proposal lifecycle states — stored as u32 bitmask-friendly variant.
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ProposalState {
+    Pending  = 0,
+    Approved = 1,
+    Executed = 2,
+    Expired = 3,
+    Cancelled = 4,
+}
+
+#[contracttype]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum BreakerState {
+    Closed = 0,
+    Open   = 1,
+}
+
+/// What action triggered a treasury snapshot.
+/// Encoded as u32 to avoid heap-allocated `String` fields.
+#[contracttype]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum TriggerKind {
+    Deposit           = 0,
+    Withdrawal        = 1,
+    ProposalExecuted  = 2,
+    GovernanceUpdate  = 3,
+    Manual            = 4,
+    BurnSafe          = 5,
+    RecoveryExecuted  = 6,
+    Other             = 7,
+}
+
+/// State commitment submitted by off-chain ZK provers.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StateCommitment {
-    /// SHA-256 of serialised state payload (32 bytes).
-    pub state_hash: BytesN<32>,
-    /// Sequence number — monotonically increasing, prevents replay.
     pub sequence:   u64,
-    /// Ledger at which this commitment was recorded.
+    pub state_hash: BytesN<32>,
+    /// Ledger sequence at which this commitment was submitted.
     pub ledger:     u32,
-    /// Signer that produced this commitment.
+    /// Address of the off-chain prover that submitted this commitment.
     pub author:     Address,
 }
 
-/// Treasury snapshot for audit history — captures state at point in time.
-/// Recorded after every state-changing operation (deposit, withdrawal, governance action).
+/// Compact governance proposal.
+///
+/// `approved_by` retains the full `Vec<Address>` so that Soroban auth
+/// can validate unique signers.  The `state` field now uses the typed enum.
 #[contracttype]
-#[derive(Clone, Debug)]
-pub struct TreasurySnapshot {
-    /// Unique snapshot ID (incremental, monotonic)
-    pub id: u64,
-    /// Total treasury balance at snapshot time
-    pub total_balance: i128,
-    /// Number of accounts in treasury
-    pub account_count: u32,
-    /// Ledger sequence at snapshot time
-    pub ledger: u32,
-    /// Timestamp (ISO 8601 string)
-    pub timestamp: soroban_sdk::String,
-    /// Hash of snapshot data (SHA-256, 32 bytes) for integrity verification
-    pub state_hash: BytesN<32>,
-    /// Operation that triggered snapshot (e.g., "deposit", "withdrawal", "proposal_executed")
-    pub triggered_by: soroban_sdk::String,
-    /// Optional context data (e.g., {"proposal_id": "42", "amount": "1000"})
-    pub context: soroban_sdk::Map<soroban_sdk::Symbol, soroban_sdk::Val>,
-}
-
-/// Proposal state machine for multi-sig governance.
-/// Valid transitions: Pending → Approved → Executed
-#[contracttype]
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
-pub enum ProposalState {
-    /// Awaiting approvals (default state at proposal creation)
-    Pending = 0,
-    /// Threshold met; time-lock window active before execution
-    Approved = 1,
-    /// Executed; terminal state
-    Executed = 2,
-}
-
-/// Governance proposal passed to multi-sig hooks.
-#[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Proposal {
-    pub id:          u64,
-    pub action_hash: BytesN<32>,
-    pub proposer:    Address,
-    pub approved_by: soroban_sdk::Vec<Address>,
-    pub state:       ProposalState,
+    pub id:              u64,
+    pub proposer:        Address,
+    pub action_hash:     BytesN<32>,
+    /// Accumulated approvals — bounded by the signer set size.
+    pub approved_by:     soroban_sdk::Vec<Address>,
+    pub state:           ProposalState,
 }
 
-/// Circuit-breaker state persisted in contract storage.
+/// Treasury snapshot — compact representation for audit history.
+///
+/// Replaced heap-allocated `String` fields with:
+/// - `timestamp_ledger: u32`  (ledger seq at record time — already available)
+/// - `timestamp_unix: u64`    (UNIX timestamp from `env.ledger().timestamp()`)
+/// - `trigger: TriggerKind`   (enum instead of freeform String)
+///
+/// `context` is kept as a `Map<Symbol,Val>` for extensibility but callers
+/// should pass minimal maps to limit storage cost.
 #[contracttype]
-#[derive(Clone, Debug, PartialEq)]
-pub enum BreakerState {
-    Closed,  // normal operation
-    Open,    // halted — no state transitions allowed
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TreasurySnapshot {
+    pub id:               u64,
+    pub total_balance:    i128,
+    pub account_count:    u32,
+    /// Ledger sequence at snapshot time.
+    pub ledger:           u32,
+    /// UNIX timestamp at snapshot time (seconds since epoch).
+    pub timestamp_unix:   u64,
+    pub state_hash:       BytesN<32>,
+    /// Trigger classification — replaces the freeform `triggered_by: String`.
+    pub trigger:          TriggerKind,
+    /// Optional small context map. Prefer empty maps when not needed.
+    pub context:          Map<Symbol, Val>,
 }
