@@ -57,11 +57,8 @@ describe("ZkStateSyncer", () => {
     const ws = await connectClient(syncer.getPort());
     expect(syncer.clientCount()).toBe(1);
     ws.close();
-    // Allow the close event to propagate by polling up to 400ms
-    for (let i = 0; i < 20; i++) {
-      if (syncer.clientCount() === 0) break;
-      await new Promise(r => setTimeout(r, 20));
-    }
+    // Allow the close event to propagate
+    await new Promise(r => setTimeout(r, 50));
     expect(syncer.clientCount()).toBe(0);
   });
 

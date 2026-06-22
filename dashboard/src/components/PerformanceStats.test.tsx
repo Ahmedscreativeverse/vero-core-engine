@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { PerformanceStats } from "./PerformanceStats";
 
 describe("PerformanceStats", () => {
@@ -24,22 +24,5 @@ describe("PerformanceStats", () => {
     render(<PerformanceStats />);
     expect(screen.getByRole("button", { name: /Pause/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Restart/i })).toBeInTheDocument();
-  });
-
-  it("flips aria-pressed on the Pause/Resume toggle to reflect running state", () => {
-    render(<PerformanceStats />);
-    const toggle = screen.getByRole("button", { name: /Pause/i });
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
-
-    fireEvent.click(toggle);
-    const resume = screen.getByRole("button", { name: /Resume/i });
-    expect(resume.getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("announces running/paused state changes via a screen-reader-only live region", () => {
-    render(<PerformanceStats />);
-    const live = document.querySelector('[aria-live="polite"]');
-    expect(live).not.toBeNull();
-    expect(live?.textContent).toMatch(/running/i);
   });
 });

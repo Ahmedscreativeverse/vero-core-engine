@@ -3,9 +3,7 @@
 //! Prevents burning/transferring funds to the zero address.
 //! Wire `reject_zero_address` into any burn or irreversible-transfer entrypoint.
 
-use soroban_sdk::{contracterror, panic_with_error, Address, BytesN, Env, String};
-use crate::event_struct::{MOD_BURN, ACT_BURN_SAFE};
-use crate::event_utils::publish_event;
+use soroban_sdk::{contracterror, panic_with_error, symbol_short, Address, Env, String};
 
 #[contracterror]
 #[derive(Copy, Clone)]
@@ -25,15 +23,12 @@ pub fn reject_zero_address(env: &Env, to: &Address) {
     }
 }
 
-/// Burn-safe transfer wrapper. Validates recipient before emitting a single compact event.
-pub fn burn_to(env: &Env, _to: &Address, amount: i128) {
-    reject_zero_address(env, _to);
-    // Single compact event — module=BURN, action=BURN_SAFE, value=amount as u64 (safe for normal amounts).
-    publish_event(
-        env,
-        MOD_BURN | ACT_BURN_SAFE,
-        amount as u64,
-        BytesN::from_array(env, &[0u8; 32]),
+/// Burn-safe transfer wrapper. Validates recipient before emitting event.
+pub fn burn_to(env: &Env, to: &Address, amount: i128) {
+    reject_zero_address(env, to);
+    env.events().publish(
+        (symbol_short!("TRE"), symbol_short!("burn_safe")),
+        (to.clone(), amount),
     );
 }
 

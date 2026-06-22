@@ -3,10 +3,8 @@
 //! Only authorised guardians may open or close the breaker.
 //! All stateful entry-points must call `assert_closed` before proceeding.
 
-use soroban_sdk::{contracterror, panic_with_error, symbol_short, vec, Address, BytesN, Env, Symbol, Vec};
+use soroban_sdk::{contracterror, panic_with_error, symbol_short, vec, Address, Env, Symbol, Vec};
 
-use crate::event_struct::{MOD_CB, ACT_TRIP, ACT_RESET};
-use crate::event_utils::publish_event;
 use crate::types::BreakerState;
 
 const KEY_STATE:    Symbol = symbol_short!("CB_STATE");
@@ -15,9 +13,9 @@ const KEY_GUARDIAN: Symbol = symbol_short!("CB_GUARD");
 #[contracterror]
 #[derive(Copy, Clone)]
 pub enum BreakerError {
-    CircuitOpen    = 1,
-    NotGuardian    = 2,
-    AlreadyInState = 3,
+    CircuitOpen      = 1,
+    NotGuardian      = 2,
+    AlreadyInState   = 3,
 }
 
 pub fn init(env: &Env, guardians: Vec<Address>) {
@@ -42,12 +40,9 @@ pub fn trip(env: &Env, guardian: &Address) {
     guardian.require_auth();
     require_guardian(env, guardian);
     set_state(env, BreakerState::Open);
-    // Single compact event — replaces previous double-emit.
-    publish_event(
-        env,
-        MOD_CB | ACT_TRIP,
-        0,
-        BytesN::from_array(env, &[0u8; 32]),
+    env.events().publish(
+        (symbol_short!("CB"), symbol_short!("tripped")),
+        guardian.clone(),
     );
 }
 
@@ -56,12 +51,9 @@ pub fn reset(env: &Env, guardian: &Address) {
     guardian.require_auth();
     require_guardian(env, guardian);
     set_state(env, BreakerState::Closed);
-    // Single compact event — replaces previous double-emit.
-    publish_event(
-        env,
-        MOD_CB | ACT_RESET,
-        0,
-        BytesN::from_array(env, &[0u8; 32]),
+    env.events().publish(
+        (symbol_short!("CB"), symbol_short!("reset")),
+        guardian.clone(),
     );
 }
 
@@ -106,17 +98,20 @@ mod tests {
         let g = Address::generate(&env);
         let contract_id = env.register_contract(None, TestContract);
 
+        // Init and verify closed
         env.as_contract(&contract_id, || {
             init(&env, vec![&env, g.clone()]);
             assert_closed(&env); // should not panic
         });
 
+        // Trip the breaker
         env.as_contract(&contract_id, || {
             trip(&env, &g);
             let state: BreakerState = env.storage().instance().get(&KEY_STATE).unwrap();
             assert_eq!(state, BreakerState::Open);
         });
 
+        // Reset the breaker
         env.as_contract(&contract_id, || {
             reset(&env, &g);
             assert_closed(&env); // back to closed — no panic

@@ -29,8 +29,6 @@ export interface QueuedEvent {
   enqueueTime: number;
   processTime?: number;
   error?: string;
-  /** Timestamp when the event becomes eligible for the next attempt (ms since epoch) */
-  nextAttempt?: number;
 }
 
 export class EventQueue {
@@ -54,7 +52,6 @@ export class EventQueue {
    *   enqueueTime (INT) - Milliseconds since epoch
    *   processTime (INT) - Milliseconds since epoch (nullable)
    *   error (TEXT)      - Last error message (nullable)
-   *   nextAttempt (INT) - Next time eligible for retry
    */
   private initializeDatabase(): Database.Database {
     const db = new Database(this.dbPath);
@@ -62,21 +59,19 @@ export class EventQueue {
     db.pragma("synchronous = NORMAL");
 
     db.exec(`
-        CREATE TABLE IF NOT EXISTS events (
-          id TEXT PRIMARY KEY,
-          eventData TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending',
-          attempts INT NOT NULL DEFAULT 0,
-          enqueueTime INT NOT NULL,
-          processTime INT,
-          error TEXT,
-          nextAttempt INT NOT NULL DEFAULT 0
-        );
+      CREATE TABLE IF NOT EXISTS events (
+        id TEXT PRIMARY KEY,
+        eventData TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INT NOT NULL DEFAULT 0,
+        enqueueTime INT NOT NULL,
+        processTime INT,
+        error TEXT
+      );
 
-        CREATE INDEX IF NOT EXISTS idx_status ON events(status);
-        CREATE INDEX IF NOT EXISTS idx_enqueueTime ON events(enqueueTime);
-        CREATE INDEX IF NOT EXISTS idx_nextAttempt ON events(nextAttempt);
-      `);
+      CREATE INDEX IF NOT EXISTS idx_status ON events(status);
+      CREATE INDEX IF NOT EXISTS idx_enqueueTime ON events(enqueueTime);
+    `);
 
     return db;
   }
@@ -86,10 +81,9 @@ export class EventQueue {
    */
   enqueue(event: EngineEvent): boolean {
     try {
-      const now = Date.now();
       const stmt = this.db.prepare(`
-        INSERT INTO events (id, eventData, status, attempts, enqueueTime, nextAttempt)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO events (id, eventData, status, attempts, enqueueTime)
+        VALUES (?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -97,8 +91,7 @@ export class EventQueue {
         JSON.stringify(event),
         "pending",
         0,
-        now,
-        now
+        Date.now()
       );
 
       return true;
@@ -114,16 +107,14 @@ export class EventQueue {
    */
   dequeue(): QueuedEvent | null {
     try {
-      const now = Date.now();
       const stmt = this.db.prepare(`
         SELECT * FROM events
-        WHERE (status = 'pending' OR (status = 'failed' AND attempts < ?))
-          AND nextAttempt <= ?
+        WHERE status = 'pending' OR (status = 'failed' AND attempts < ?)
         ORDER BY enqueueTime ASC
         LIMIT 1
       `);
 
-      const row = stmt.get(this.maxRetries, now) as any;
+      const row = stmt.get(this.maxRetries) as any;
       if (!row) return null;
 
       // Transition to processing
@@ -173,26 +164,21 @@ export class EventQueue {
    */
   markFailed(eventId: string, error: Error): boolean {
     try {
-      // Get current attempt count and nextAttempt
+      // Get current attempt count
       const getStmt = this.db.prepare("SELECT attempts FROM events WHERE id = ?");
       const row = getStmt.get(eventId) as any;
 
       if (!row) return false;
 
       const hasMoreRetries = row.attempts < this.maxRetries;
-      const newStatus = "failed"; // always update to 'failed' in DB to track states
-
-      // Compute exponential backoff delay (in ms) based on next attempt count
-      const isTest = process.env.NODE_ENV === "test";
-      const delayMs = (hasMoreRetries && !isTest) ? Math.pow(2, row.attempts) * 1000 : 0; // attempts already incremented in dequeue
-      const nextAttempt = Date.now() + delayMs;
+      const newStatus = hasMoreRetries ? "pending" : "failed";
 
       const stmt = this.db.prepare(`
         UPDATE events
-        SET status = ?, error = ?, nextAttempt = ?
+        SET status = ?, error = ?
         WHERE id = ?
       `);
-      stmt.run(newStatus, error.message, nextAttempt, eventId);
+      stmt.run(newStatus, error.message, eventId);
 
       return true;
     } catch (err) {
@@ -207,21 +193,13 @@ export class EventQueue {
    */
   recoverPending(): QueuedEvent[] {
     try {
-      // Reset any processing or retrying failed events back to pending
-      const resetStmt = this.db.prepare(`
-        UPDATE events
-        SET status = 'pending'
-        WHERE status = 'processing' OR (status = 'failed' AND attempts < ?)
-      `);
-      resetStmt.run(this.maxRetries);
-
       const stmt = this.db.prepare(`
         SELECT * FROM events
-        WHERE status = 'pending'
+        WHERE status = 'pending' OR (status = 'failed' AND attempts < ?)
         ORDER BY enqueueTime ASC
       `);
 
-      const rows = stmt.all() as any[];
+      const rows = stmt.all(this.maxRetries) as any[];
       return rows.map(row => ({
         id: row.id,
         eventData: JSON.parse(row.eventData),
@@ -249,31 +227,18 @@ export class EventQueue {
     oldestEventAge: number | null;
   } {
     try {
-      const allStmt = this.db.prepare("SELECT status, attempts FROM events");
-      const rows = allStmt.all() as any[];
+      const countStmt = this.db.prepare("SELECT status, COUNT(*) as count FROM events GROUP BY status");
+      const counts = countStmt.all() as any[];
 
-      const stats = {
-        total: rows.length,
+      const countMap: Record<string, number> = {
         pending: 0,
         processing: 0,
         processed: 0,
         failed: 0,
       };
 
-      rows.forEach(row => {
-        if (row.status === "pending") {
-          stats.pending++;
-        } else if (row.status === "processed") {
-          stats.processed++;
-        } else if (row.status === "processing") {
-          stats.processing++;
-        } else if (row.status === "failed") {
-          if (row.attempts < this.maxRetries) {
-            stats.processing++;
-          } else {
-            stats.failed++;
-          }
-        }
+      counts.forEach(row => {
+        countMap[row.status] = row.count;
       });
 
       const oldestStmt = this.db.prepare("SELECT enqueueTime FROM events ORDER BY enqueueTime ASC LIMIT 1");
@@ -281,7 +246,11 @@ export class EventQueue {
       const oldestEventAge = oldest ? Date.now() - oldest.enqueueTime : null;
 
       return {
-        ...stats,
+        total: counts.reduce((sum, row) => sum + row.count, 0),
+        pending: countMap.pending,
+        processing: countMap.processing,
+        processed: countMap.processed,
+        failed: countMap.failed,
         oldestEventAge,
       };
     } catch (err) {
