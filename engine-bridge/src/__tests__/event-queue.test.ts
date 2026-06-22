@@ -13,11 +13,9 @@ import { EngineEvent } from "../event-propagator";
 import * as fs from "fs";
 import * as path from "path";
 
-let testQueueCounter = 0;
 // Helper to create test queue with unique path
 function createTestQueue(): { queue: EventQueue; path: string } {
-  testQueueCounter++;
-  const testPath = path.join(process.cwd(), `test-queue-${Date.now()}-${testQueueCounter}-${Math.random().toString(36).substring(7)}.db`);
+  const testPath = path.join(process.cwd(), `test-queue-${Date.now()}.db`);
   return {
     queue: new EventQueue(testPath),
     path: testPath,

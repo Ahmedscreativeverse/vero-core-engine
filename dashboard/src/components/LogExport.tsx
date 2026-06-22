@@ -1,4 +1,4 @@
-import React, { useId, useMemo } from "react";
+import React, { useMemo } from "react";
 import { Download, FileSpreadsheet, Filter } from "lucide-react";
 import { Card } from "./Card";
 import { useAuditLogs, type StatusFilter, type TypeFilter } from "../hooks/useAuditLogs";
@@ -87,12 +87,6 @@ export const LogExport: React.FC = () => {
     [logs]
   );
 
-  // Stable ids for linking screen-reader announcements to the regions
-  // that hold them — keeps `aria-live` and `aria-describedby` deterministic
-  // across renders and avoids colliding with adjacent panels.
-  const filterHelpId = useId();
-  const resultCountId = useId();
-
   const csv = useMemo(
     () =>
       toCsv(filtered, [
@@ -130,11 +124,7 @@ export const LogExport: React.FC = () => {
         </button>
       }
     >
-      <div
-        className="flex flex-wrap items-center gap-4 mb-4"
-        role="group"
-        aria-describedby={filterHelpId}
-      >
+      <div className="flex flex-wrap items-center gap-4 mb-4">
         <FilterSelect
           id="status-filter"
           value={statusFilter}
@@ -149,15 +139,7 @@ export const LogExport: React.FC = () => {
           options={TYPE_OPTIONS}
           label="Type"
         />
-        <p id={filterHelpId} className="sr-only">
-          Filter the audit entries shown in the table below.
-        </p>
-        <div
-          id={resultCountId}
-          className="ml-auto flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400"
-          aria-live="polite"
-          aria-atomic="true"
-        >
+        <div className="ml-auto flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
           <span className="inline-flex items-center gap-1">
             <FileSpreadsheet size={12} /> {filtered.length} / {logs.length} entries
           </span>
@@ -176,11 +158,8 @@ export const LogExport: React.FC = () => {
         </span>
       </div>
 
-      <div
-        className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg"
-        aria-describedby={resultCountId}
-      >
-        <table className="w-full text-sm" aria-rowcount={filtered.length}>
+      <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+        <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-900/40 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
             <tr>
               <th className="px-3 py-2 text-left font-medium">Time</th>
