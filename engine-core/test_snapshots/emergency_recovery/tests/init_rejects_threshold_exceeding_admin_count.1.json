@@ -74,101 +74,6 @@
       "event": {
         "ext": "v0",
         "contract_id": "0000000000000000000000000000000000000000000000000000000000000002",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "AUDIT"
-              },
-              {
-                "symbol": "commit"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "u64": 1
-                },
-                {
-                  "bytes": "9dcbcf21a5a9d8a551075709cee7265d2abfe3225ee3646c7b12dcf93b79fd4e"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000002",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "EVENT"
-              },
-              {
-                "symbol": "LOG"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "action"
-                  },
-                  "val": {
-                    "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "event_type"
-                  },
-                  "val": {
-                    "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "payload"
-                  },
-                  "val": {
-                    "map": [
-                      {
-                        "key": {
-                          "symbol": "hash"
-                        },
-                        "val": {
-                          "bytes": "9dcbcf21a5a9d8a551075709cee7265d2abfe3225ee3646c7b12dcf93b79fd4e"
-                        }
-                      },
-                      {
-                        "key": {
-                          "symbol": "seq"
-                        },
-                        "val": {
-                          "u64": 1
-                        }
-                      }
-                    ]
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "0000000000000000000000000000000000000000000000000000000000000002",
         "type_": "diagnostic",
         "body": {
           "v0": {
@@ -178,7 +83,7 @@
               },
               {
                 "error": {
-                  "contract": 1
+                  "contract": 5
                 }
               }
             ],
@@ -188,7 +93,7 @@
                   "string": "failing with contract error"
                 },
                 {
-                  "u32": 1
+                  "u32": 5
                 }
               ]
             }
@@ -210,7 +115,7 @@
               },
               {
                 "error": {
-                  "contract": 1
+                  "contract": 5
                 }
               }
             ],

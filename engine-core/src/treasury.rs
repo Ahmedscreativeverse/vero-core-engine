@@ -1,3 +1,19 @@
+use soroban_sdk::{contracterror, panic_with_error, symbol_short, BytesN, Bytes, Env, IntoVal, Map, String, Symbol, Vec};
+use crate::event_utils::publish_event;
+use crate::types::TreasurySnapshot;
+
+const KEY_SNAP_COUNTER: Symbol = symbol_short!("SNAPC");
+const KEY_SNAP_LATEST:  Symbol = symbol_short!("SNAPL");
+const MAX_BALANCE: i128 = 1_000_000_000_000_000_000;
+const MAX_ACCOUNT_COUNT: u32 = 10_000_000;
+
+#[contracterror]
+#[derive(Copy, Clone)]
+pub enum TreasuryError {
+    SnapshotNotFound = 1,
+    InvalidBalance   = 2,
+    InvalidAccountCount = 3,
+}
 //! Treasury state snapshots for audit history.
 //!
 //! ## Storage layout (optimised)
@@ -26,7 +42,6 @@ const KEY_SNAP_LATEST:  Symbol = soroban_sdk::symbol_short!("SNAPL");
 const SNAP_TTL_THRESHOLD: u32 = 17_280;
 const SNAP_TTL_EXTEND_TO: u32 = 17_280 * 7;
 
-/// Initialize treasury snapshot system. Called once at contract deployment.
 pub fn init(env: &Env) {
     env.storage().instance().set(&KEY_SNAP_COUNTER, &0u64);
     env.storage().instance().set(&KEY_SNAP_LATEST,  &0u64);
@@ -49,11 +64,15 @@ pub fn record_snapshot(
     if total_balance < 0 {
         panic_with_error!(env, TreasuryError::InvalidBalance);
     }
+    let total_balance = total_balance.min(MAX_BALANCE);
+    let account_count = account_count.min(MAX_ACCOUNT_COUNT);
 
     let counter: u64 = env.storage().instance().get(&KEY_SNAP_COUNTER).unwrap_or(0);
     let snapshot_id = counter + 1;
 
     let state_hash = compute_hash(env, total_balance, account_count, env.ledger().sequence());
+
+    let ts_str = String::from_str(env, &alloc::format!("{}", env.ledger().timestamp()));
 
     let snapshot = TreasurySnapshot {
         id:             snapshot_id,
@@ -75,6 +94,18 @@ pub fn record_snapshot(
         .extend_ttl(&snapshot_key, SNAP_TTL_THRESHOLD, SNAP_TTL_EXTEND_TO);
 
     env.storage().instance().set(&KEY_SNAP_COUNTER, &snapshot_id);
+    env.storage().instance().set(&KEY_SNAP_LATEST, &snapshot_id);
+
+    env.events().publish(
+        (symbol_short!("TRE"), symbol_short!("snapshot")),
+        snapshot_id,
+    );
+    let mut payload = Map::new(env);
+    payload.set(symbol_short!("id"), snapshot_id.into_val(env));
+    payload.set(symbol_short!("balance"), total_balance.into_val(env));
+    payload.set(symbol_short!("accounts"), account_count.into_val(env));
+    payload.set(symbol_short!("ledger"), env.ledger().sequence().into_val(env));
+    publish_event(env, BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32]), payload);
     env.storage().instance().set(&KEY_SNAP_LATEST,  &snapshot_id);
 
     // Single compact event — snapshot id in value, state_hash in hash field.
@@ -83,28 +114,26 @@ pub fn record_snapshot(
     snapshot_id
 }
 
-/// Retrieve a snapshot by ID.
 pub fn get_snapshot(env: &Env, snapshot_id: u64) -> Option<TreasurySnapshot> {
     let key = make_snap_key(env, snapshot_id);
     env.storage().temporary().get(&key)
 }
 
-/// Get the most recent snapshot.
 pub fn get_latest_snapshot(env: &Env) -> Option<TreasurySnapshot> {
     let latest_id: u64 = env.storage().instance().get(&KEY_SNAP_LATEST).unwrap_or(0);
     if latest_id == 0 { return None; }
     get_snapshot(env, latest_id)
 }
 
-/// Get snapshot count.
 pub fn snapshot_count(env: &Env) -> u64 {
     env.storage().instance().get(&KEY_SNAP_COUNTER).unwrap_or(0)
 }
 
-/// Get IDs of the most recent `count` snapshots (newest first).
 pub fn get_recent_snapshots(env: &Env, count: u32) -> Vec<u64> {
+    let count = count.min(MAX_ACCOUNT_COUNT);
     let total = snapshot_count(env);
     let mut result = Vec::new(env);
+    if total == 0 { return result; }
     let start = if total as u32 > count { (total as u32) - count + 1 } else { 1 };
     for id in (start as u64..=total).rev() {
         result.push_back(id);
@@ -112,15 +141,14 @@ pub fn get_recent_snapshots(env: &Env, count: u32) -> Vec<u64> {
     result
 }
 
-/// Verify snapshot integrity by recomputing the hash.
 pub fn verify_snapshot(env: &Env, snapshot: &TreasurySnapshot) -> bool {
     let recomputed = compute_hash(env, snapshot.total_balance, snapshot.account_count, snapshot.ledger);
     snapshot.state_hash == recomputed
 }
 
-/// Retrieve all snapshots from `from_id` onward (audit trail).
 pub fn audit_trail(env: &Env, from_id: u64) -> Vec<TreasurySnapshot> {
     let total = snapshot_count(env);
+    let from_id = from_id.min(total);
     let mut result = Vec::new(env);
     for id in from_id..=total {
         if let Some(snap) = get_snapshot(env, id) {
@@ -130,11 +158,7 @@ pub fn audit_trail(env: &Env, from_id: u64) -> Vec<TreasurySnapshot> {
     result
 }
 
-// ── internal ──────────────────────────────────────────────────────────────────
-
 fn compute_hash(env: &Env, balance: i128, account_count: u32, ledger: u32) -> BytesN<32> {
-    // Pack fields into a fixed-size byte buffer for deterministic hashing.
-    // Layout: balance(16) | account_count(4) | ledger(4) = 24 bytes
     let mut raw = [0u8; 24];
     raw[..16].copy_from_slice(&balance.to_be_bytes());
     raw[16..20].copy_from_slice(&account_count.to_be_bytes());
@@ -143,12 +167,14 @@ fn compute_hash(env: &Env, balance: i128, account_count: u32, ledger: u32) -> By
 }
 
 fn make_snap_key(env: &Env, id: u64) -> Symbol {
+    Symbol::new(env, &alloc::format!("S{}", id))
     Symbol::new(env, &format!("S{}", id))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::{Env, Map, String, Symbol};
     use soroban_sdk::{Env, Map, Symbol};
 
     #[soroban_sdk::contract]

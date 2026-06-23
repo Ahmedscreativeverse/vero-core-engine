@@ -1,3 +1,4 @@
+use soroban_sdk::{contracttype, contracterror, Address, BytesN, Map, String, Symbol, Val};
 use soroban_sdk::{contracttype, contracterror, Address, BytesN, Map, Symbol, Val};
 
 #[contracterror]
@@ -49,6 +50,23 @@ pub enum TriggerKind {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StateCommitment {
+    pub sequence: u64,
+    pub state_hash: BytesN<32>,
+    pub ledger: u32,
+    pub author: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TreasurySnapshot {
+    pub id: u64,
+    pub total_balance: i128,
+    pub account_count: u32,
+    pub ledger: u32,
+    pub timestamp: String,
+    pub state_hash: BytesN<32>,
+    pub triggered_by: String,
+    pub context: Map<Symbol, Val>,
     pub sequence:   u64,
     pub state_hash: BytesN<32>,
     /// Ledger sequence at which this commitment was submitted.
@@ -64,6 +82,12 @@ pub struct StateCommitment {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Proposal {
+    pub id: u64,
+    pub proposer: soroban_sdk::Address,
+    pub action_hash: soroban_sdk::BytesN<32>,
+    pub approved_by: soroban_sdk::Vec<soroban_sdk::Address>,
+    pub state: ProposalState,
+    pub voting_deadline: u32,
     pub id:              u64,
     pub proposer:        Address,
     pub action_hash:     BytesN<32>,

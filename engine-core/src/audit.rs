@@ -4,6 +4,7 @@
 //! Off-chain provers submit `StateCommitment`s; this module verifies ordering
 //! and hash integrity before they are persisted.
 
+use soroban_sdk::{contracterror, panic_with_error, symbol_short, Env, Symbol, BytesN, Map, IntoVal};
 use soroban_sdk::{contracterror, panic_with_error, symbol_short, Env, Symbol, BytesN};
 use crate::event_struct::{MOD_AUDIT, ACT_COMMIT};
 use crate::event_utils::publish_event;
@@ -66,6 +67,11 @@ pub fn validate_transition(env: &Env, commitment: &StateCommitment, payload: &[u
         commitment.sequence,
         commitment.state_hash.clone(),
     );
+    // Emit structured Event for audit logs
+    let mut payload = Map::new(env);
+    payload.set(symbol_short!("seq"), commitment.sequence.into_val(env));
+    payload.set(symbol_short!("hash"), commitment.state_hash.clone().into_val(env));
+    publish_event(env, BytesN::from_array(env, &[0u8; 32]), BytesN::from_array(env, &[0u8; 32]), payload);
 }
 
 #[cfg(test)]

@@ -179,6 +179,10 @@ mod tests {
 
     fn setup(env: &Env, n: u32, threshold: u32) -> (Address, Vec<Address>) {
         let contract_id = env.register_contract(None, TestContract);
+        let mut admins = vec![env];
+        for _ in 0..n {
+            admins.push_back(Address::generate(env));
+        }
         let admins: Vec<Address> = (0..n)
             .map(|_| Address::generate(env))
             .collect::<std::vec::Vec<_>>()

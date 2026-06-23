@@ -1,3 +1,4 @@
+use soroban_sdk::{contracterror, panic_with_error, symbol_short, vec, Address, Env, IntoVal, Symbol, Vec, BytesN, Map};
 //! Emergency circuit-breaker — halts all state transitions when tripped.
 //!
 //! Only authorised guardians may open or close the breaker.
@@ -25,7 +26,6 @@ pub fn init(env: &Env, guardians: Vec<Address>) {
     env.storage().instance().set(&KEY_GUARDIAN, &guardians);
 }
 
-/// Panics with `BreakerError::CircuitOpen` when the breaker is tripped.
 pub fn assert_closed(env: &Env) {
     let state: BreakerState = env
         .storage()
@@ -37,7 +37,6 @@ pub fn assert_closed(env: &Env) {
     }
 }
 
-/// Trip the breaker — halts the engine. Requires guardian auth.
 pub fn trip(env: &Env, guardian: &Address) {
     guardian.require_auth();
     require_guardian(env, guardian);
@@ -49,9 +48,11 @@ pub fn trip(env: &Env, guardian: &Address) {
         0,
         BytesN::from_array(env, &[0u8; 32]),
     );
+    let mut payload = Map::new(env);
+    payload.set(symbol_short!("guardian"), guardian.clone().into_val(env));
+    publish_event(env, BytesN::from_array(env, & [0u8; 32]), BytesN::from_array(env, & [0u8; 32]), payload);
 }
 
-/// Reset the breaker — resumes normal operation. Requires guardian auth.
 pub fn reset(env: &Env, guardian: &Address) {
     guardian.require_auth();
     require_guardian(env, guardian);
@@ -63,6 +64,9 @@ pub fn reset(env: &Env, guardian: &Address) {
         0,
         BytesN::from_array(env, &[0u8; 32]),
     );
+    let mut payload = Map::new(env);
+    payload.set(symbol_short!("guardian"), guardian.clone().into_val(env));
+    publish_event(env, BytesN::from_array(env, & [0u8; 32]), BytesN::from_array(env, & [0u8; 32]), payload);
 }
 
 fn set_state(env: &Env, state: BreakerState) {
@@ -108,7 +112,7 @@ mod tests {
 
         env.as_contract(&contract_id, || {
             init(&env, vec![&env, g.clone()]);
-            assert_closed(&env); // should not panic
+            assert_closed(&env);
         });
 
         env.as_contract(&contract_id, || {
@@ -119,7 +123,7 @@ mod tests {
 
         env.as_contract(&contract_id, || {
             reset(&env, &g);
-            assert_closed(&env); // back to closed — no panic
+            assert_closed(&env);
         });
     }
 

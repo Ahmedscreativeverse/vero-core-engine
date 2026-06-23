@@ -1,3 +1,4 @@
+use soroban_sdk::{contracterror, panic_with_error, symbol_short, Address, Env, IntoVal, String, BytesN, Map};
 //! Burn module — zero-address rejection guard.
 //!
 //! Prevents burning/transferring funds to the zero address.
@@ -10,14 +11,11 @@ use crate::event_utils::publish_event;
 #[contracterror]
 #[derive(Copy, Clone)]
 pub enum BurnError {
-    /// Attempted to burn/transfer funds to the zero address.
     ZeroAddress = 1,
 }
 
-/// Stellar well-known zero address (all-A strkey, 56 chars).
 const ZERO_ADDRESS: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
-/// Panics with `BurnError::ZeroAddress` when `to` is the Stellar zero address.
 pub fn reject_zero_address(env: &Env, to: &Address) {
     let zero = String::from_str(env, ZERO_ADDRESS);
     if to.to_string() == zero {
@@ -25,6 +23,19 @@ pub fn reject_zero_address(env: &Env, to: &Address) {
     }
 }
 
+pub fn burn_to(env: &Env, to: &Address, amount: i128) {
+    reject_zero_address(env, to);
+    if amount <= 0 {
+        panic_with_error!(env, BurnError::ZeroAddress);
+    }
+    env.events().publish(
+        (symbol_short!("TRE"), symbol_short!("burn_safe")),
+        (to.clone(), amount),
+    );
+    let mut payload = Map::new(env);
+    payload.set(symbol_short!("to"), to.clone().into_val(env));
+    payload.set(symbol_short!("amount"), amount.into_val(env));
+    publish_event(env, BytesN::from_array(env, & [0u8; 32]), BytesN::from_array(env, & [0u8; 32]), payload);
 /// Burn-safe transfer wrapper. Validates recipient before emitting a single compact event.
 pub fn burn_to(env: &Env, _to: &Address, amount: i128) {
     reject_zero_address(env, _to);
