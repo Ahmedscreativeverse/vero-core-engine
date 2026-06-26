@@ -4,19 +4,19 @@
 //! Off-chain provers submit `StateCommitment`s; this module verifies ordering
 //! and hash integrity before they are persisted.
 
-use soroban_sdk::{contracttype, panic_with_error, symbol_short, Env, Symbol};
 use sha2::{Digest, Sha256};
+use soroban_sdk::{contracterror, panic_with_error, symbol_short, Env, Symbol};
 
 use crate::types::StateCommitment;
 
-const KEY_SEQ:  Symbol = symbol_short!("SEQ");
+const KEY_SEQ: Symbol = symbol_short!("SEQ");
 const KEY_PREV: Symbol = symbol_short!("PREV_H");
 
-#[contracttype]
+#[contracterror]
 #[derive(Copy, Clone)]
 pub enum AuditError {
-    ReplayedSequence  = 1,
-    HashMismatch      = 2,
+    ReplayedSequence = 1,
+    HashMismatch = 2,
     AuthorUnauthorised = 3,
 }
 
@@ -35,36 +35,41 @@ pub fn compute_commitment(prev_hash: &[u8; 32], sequence: u64, payload: &[u8]) -
 /// - `commitment.sequence` ≤ last recorded sequence (replay guard)
 /// - `commitment.state_hash` doesn't match the expected derivation
 pub fn validate_transition(env: &Env, commitment: &StateCommitment, payload: &[u8]) {
-    let last_seq: u64 = env.storage().instance().get(&KEY_SEQ).unwrap_or(0);
-    if commitment.sequence <= last_seq {
-        panic_with_error!(env, AuditError::ReplayedSequence);
-    }
+    crate::non_reentrant!(env, {
+        let last_seq: u64 = env.storage().instance().get(&KEY_SEQ).unwrap_or(0);
+        if commitment.sequence <= last_seq {
+            panic_with_error!(env, AuditError::ReplayedSequence);
+        }
 
-    let prev_hash: [u8; 32] = env
-        .storage()
-        .instance()
-        .get::<Symbol, [u8; 32]>(&KEY_PREV)
-        .unwrap_or([0u8; 32]);
+        let prev_hash: [u8; 32] = env
+            .storage()
+            .instance()
+            .get::<Symbol, [u8; 32]>(&KEY_PREV)
+            .unwrap_or([0u8; 32]);
 
-    let expected = compute_commitment(&prev_hash, commitment.sequence, payload);
-    let actual: [u8; 32] = commitment.state_hash.to_array();
-    if expected != actual {
-        panic_with_error!(env, AuditError::HashMismatch);
-    }
+        let expected = compute_commitment(&prev_hash, commitment.sequence, payload);
+        let actual: [u8; 32] = commitment.state_hash.to_array();
+        if expected != actual {
+            panic_with_error!(env, AuditError::HashMismatch);
+        }
 
-    env.storage().instance().set(&KEY_SEQ, &commitment.sequence);
-    env.storage().instance().set(&KEY_PREV, &actual);
+        env.storage().instance().set(&KEY_SEQ, &commitment.sequence);
+        env.storage().instance().set(&KEY_PREV, &actual);
 
-    env.events().publish(
-        (symbol_short!("AUDIT"), symbol_short!("commit")),
-        (commitment.sequence, commitment.state_hash.clone()),
-    );
+        env.events().publish(
+            (symbol_short!("AUDIT"), symbol_short!("commit")),
+            (commitment.sequence, commitment.state_hash.clone()),
+        );
+    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+    use soroban_sdk::{contract, testutils::Address as _, Address, BytesN, Env};
+
+    #[contract]
+    struct TestContract;
 
     #[test]
     fn valid_first_commitment() {
@@ -74,11 +79,14 @@ mod tests {
 
         let c = StateCommitment {
             state_hash: BytesN::from_array(&env, &hash),
-            sequence:   1,
-            ledger:     100,
-            author:     Address::generate(&env),
+            sequence: 1,
+            ledger: 100,
+            author: Address::generate(&env),
         };
-        validate_transition(&env, &c, payload); // must not panic
+        let contract_id = env.register_contract(None, TestContract);
+        env.as_contract(&contract_id, || {
+            validate_transition(&env, &c, payload); // must not panic
+        });
     }
 
     #[test]
@@ -89,11 +97,14 @@ mod tests {
         let hash = compute_commitment(&[0u8; 32], 1, payload);
         let c = StateCommitment {
             state_hash: BytesN::from_array(&env, &hash),
-            sequence:   1,
-            ledger:     100,
-            author:     Address::generate(&env),
+            sequence: 1,
+            ledger: 100,
+            author: Address::generate(&env),
         };
-        validate_transition(&env, &c, payload);
-        validate_transition(&env, &c, payload); // second call must panic
+        let contract_id = env.register_contract(None, TestContract);
+        env.as_contract(&contract_id, || {
+            validate_transition(&env, &c, payload);
+            validate_transition(&env, &c, payload); // second call must panic
+        });
     }
 }
