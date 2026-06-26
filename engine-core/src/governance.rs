@@ -1,8 +1,6 @@
-//! Multi-sig governance hooks — treasury and upgrade decision gating.
+//! Multi-sig governance with timelock.
 //!
-//! A `Proposal` requires `threshold` distinct approvals before `execute`
-//! can be called. The time-lock window enforces a mandatory delay between
-//! full approval and execution, giving stakeholders a veto window.
+//! ## Storage layout (optimised)
 //!
 //! ## Proposal State Machine
 //! ```text
@@ -10,17 +8,42 @@
 //! ```
 //! Invalid transitions trigger contract panics.
 
+use crate::event_struct::{MOD_GOV, ACT_PROPOSE, ACT_APPROVE, ACT_EXECUTE};
+use crate::event_utils::publish_event;
+use crate::types::{Proposal, ProposalState};
 use soroban_sdk::{
     contracterror, panic_with_error, symbol_short, vec, Address, Env, Map, Symbol, Vec,
 };
 
-use crate::types::{Proposal, ProposalState};
+const KEY_PROPOSALS:  Symbol = symbol_short!("PROPS");
+const KEY_SIGNERS:    Symbol = symbol_short!("SIGNERS");
+const KEY_THRESH:     Symbol = symbol_short!("THRESH");
+const KEY_MIN_STAKE:  Symbol = symbol_short!("MINSTAKE");
+const KEY_STAKE_TOK:  Symbol = symbol_short!("STKTOK");
+    Symbol, Val, Vec,
+};
 
 const KEY_PROPOSALS: Symbol = symbol_short!("PROPS");
 const KEY_SIGNERS: Symbol = symbol_short!("SIGNERS");
 const KEY_THRESH: Symbol = symbol_short!("THRESH");
 /// Ledgers to wait after full approval before execution (~1 hour on Stellar).
 const TIMELOCK_LEDGERS: u32 = 720;
+const MAX_THRESHOLD: u32 = 100;
+const MAX_DURATION_LEDGERS: u32 = 5256000;
+const MIN_DURATION_LEDGERS: u32 = 1;
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum GovError {
+    NotASigner = 1,
+    AlreadyApproved = 2,
+    ProposalNotFound = 3,
+    InvalidStateTransition = 4,
+    TimelockActive = 5,
+    InsufficientStake = 6,
+    InvalidThreshold = 7,
+    InvalidStake = 8,
+}
 
 #[contracterror]
 #[derive(Copy, Clone)]
@@ -121,8 +144,6 @@ pub fn approve(env: &Env, signer: &Address, proposal_id: u64) {
     });
 }
 
-/// Execute a proposal after threshold approvals and time-lock expiry.
-/// Transitions state from Approved → Executed.
 pub fn execute(env: &Env, proposal_id: u64) -> Proposal {
     crate::non_reentrant!(env, {
         let mut props = load_proposals(env);

@@ -1,3 +1,4 @@
+use soroban_sdk::{contracterror, panic_with_error, symbol_short, vec, Address, Env, IntoVal, Symbol, Vec, BytesN, Map};
 //! Emergency circuit-breaker — halts all state transitions when tripped.
 //!
 //! Only authorised guardians may open or close the breaker.
@@ -5,6 +6,8 @@
 
 use soroban_sdk::{contracterror, panic_with_error, symbol_short, vec, Address, Env, Symbol, Vec};
 
+use crate::event_struct::{MOD_CB, ACT_TRIP, ACT_RESET};
+use crate::event_utils::publish_event;
 use crate::types::BreakerState;
 
 const KEY_STATE: Symbol = symbol_short!("CB_STATE");
@@ -27,7 +30,6 @@ pub fn init(env: &Env, guardians: Vec<Address>) {
     });
 }
 
-/// Panics with `BreakerError::CircuitOpen` when the breaker is tripped.
 pub fn assert_closed(env: &Env) {
     let state: BreakerState = env
         .storage()
@@ -39,7 +41,6 @@ pub fn assert_closed(env: &Env) {
     }
 }
 
-/// Trip the breaker — halts the engine. Requires guardian auth.
 pub fn trip(env: &Env, guardian: &Address) {
     crate::non_reentrant!(env, {
         guardian.require_auth();
@@ -52,7 +53,6 @@ pub fn trip(env: &Env, guardian: &Address) {
     });
 }
 
-/// Reset the breaker — resumes normal operation. Requires guardian auth.
 pub fn reset(env: &Env, guardian: &Address) {
     crate::non_reentrant!(env, {
         guardian.require_auth();
@@ -95,6 +95,12 @@ mod tests {
 
     #[contract]
     struct TestContract;
+
+    #[soroban_sdk::contract]
+    pub struct TestContract;
+
+    #[soroban_sdk::contractimpl]
+    impl TestContract {}
 
     #[test]
     fn trip_and_reset() {

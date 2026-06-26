@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use soroban_sdk::{contracterror, panic_with_error, symbol_short, Env, Symbol};
 
 use crate::types::StateCommitment;
+use crate::circuit_breaker::assert_closed;
 
 const KEY_SEQ: Symbol = symbol_short!("SEQ");
 const KEY_PREV: Symbol = symbol_short!("PREV_H");
@@ -70,6 +71,12 @@ mod tests {
 
     #[contract]
     struct TestContract;
+
+    #[soroban_sdk::contract]
+    pub struct TestContract;
+
+    #[soroban_sdk::contractimpl]
+    impl TestContract {}
 
     #[test]
     fn valid_first_commitment() {
