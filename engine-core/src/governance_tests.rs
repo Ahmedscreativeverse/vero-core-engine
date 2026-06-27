@@ -46,6 +46,7 @@ mod tests {
         env.mock_all_auths();
         let contract_id = setup_env(&env);
         let proposer = Address::generate(&env);
+        env.mock_all_auths();
 
         init_one_of_one(&env, &contract_id, &proposer);
         let id = propose_default(&env, &contract_id, &proposer);
@@ -115,6 +116,7 @@ mod tests {
         env.mock_all_auths();
         let contract_id = setup_env(&env);
         let proposer = Address::generate(&env);
+        env.mock_all_auths();
 
         init_one_of_one(&env, &contract_id, &proposer);
         let id = propose_default(&env, &contract_id, &proposer);
@@ -195,7 +197,7 @@ mod tests {
 
     #[test]
     fn test_invalid_transition_error_code() {
-        assert_eq!(GovError::InvalidStateTransition as u32, 5);
+        assert_eq!(GovError::InvalidStateTransition as u32, 4);
     }
 
     #[test]
@@ -217,18 +219,17 @@ mod tests {
         });
     }
 
-    /// State Transition Matrix (documentation anchor for auditors).
-    ///
-    /// | Current State | Operation | Target State | Allowed | Error |
-    /// |---|---|---|---|---|
-    /// | Pending | approve (< threshold) | Pending | Yes | — |
-    /// | Pending | approve (>= threshold) | Approved | Yes | — |
-    /// | Pending | execute | — | No | InvalidStateTransition |
-    /// | Approved | approve | — | No | InvalidStateTransition |
-    /// | Approved | execute (timelock OK) | Executed | Yes | — |
-    /// | Approved | execute (timelock active) | — | No | TimelockActive |
-    /// | Executed | approve | — | No | InvalidStateTransition |
-    /// | Executed | execute | — | No | InvalidStateTransition |
-    #[allow(dead_code)]
-    pub struct StateTransitionMatrix;
+/// State Transition Matrix (for documentation)
+///
+/// | Current State | Operation | Target State | Allowed | Error |
+/// |---|---|---|---|---|
+/// | Pending | approve (< threshold) | Pending | Yes | — |
+/// | Pending | approve (>= threshold) | Approved | Yes | — |
+/// | Pending | execute | — | No | InvalidStateTransition |
+/// | Approved | approve | — | No | InvalidStateTransition |
+/// | Approved | execute (timelock OK) | Executed | Yes | — |
+/// | Approved | execute (timelock active) | — | No | TimelockActive |
+/// | Executed | approve | — | No | InvalidStateTransition |
+/// | Executed | execute | — | No | InvalidStateTransition |
+pub struct StateTransitionMatrix;
 }

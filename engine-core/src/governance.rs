@@ -190,7 +190,6 @@ pub fn approve(env: &Env, signer: &Address, proposal_id: u64) {
     if proposal.approved_by.contains(signer) {
         panic_with_error!(env, GovError::AlreadyApproved);
     }
-
     proposal.approved_by.push_back(signer.clone());
 
     let approval_threshold = threshold(env);
