@@ -1,10 +1,9 @@
-use soroban_sdk::{contracterror, panic_with_error, symbol_short, vec, Address, Env, IntoVal, Symbol, Vec, BytesN, Map};
 //! Emergency circuit-breaker — halts all state transitions when tripped.
 //!
 //! Only authorised guardians may open or close the breaker.
 //! All stateful entry-points must call `assert_closed` before proceeding.
 
-use soroban_sdk::{contracterror, panic_with_error, symbol_short, vec, Address, Env, Symbol, Vec};
+use soroban_sdk::{contracterror, panic_with_error, symbol_short, vec, Address, BytesN, Env, Symbol, Vec};
 
 use crate::event_struct::{MOD_CB, ACT_TRIP, ACT_RESET};
 use crate::event_utils::publish_event;
@@ -51,9 +50,6 @@ pub fn trip(env: &Env, guardian: &Address) {
         0,
         BytesN::from_array(env, &[0u8; 32]),
     );
-    let mut payload = Map::new(env);
-    payload.set(symbol_short!("guardian"), guardian.clone().into_val(env));
-    publish_event(env, BytesN::from_array(env, & [0u8; 32]), BytesN::from_array(env, & [0u8; 32]), payload);
 }
 
 pub fn reset(env: &Env, guardian: &Address) {
@@ -68,9 +64,6 @@ pub fn reset(env: &Env, guardian: &Address) {
         0,
         BytesN::from_array(env, &[0u8; 32]),
     );
-    let mut payload = Map::new(env);
-    payload.set(symbol_short!("guardian"), guardian.clone().into_val(env));
-    publish_event(env, BytesN::from_array(env, & [0u8; 32]), BytesN::from_array(env, & [0u8; 32]), payload);
 }
 
 fn set_state(env: &Env, state: BreakerState) {

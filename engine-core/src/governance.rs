@@ -8,7 +8,7 @@
 //! ```
 //! Invalid transitions trigger contract panics.
 
-use crate::event_struct::{ACT_APPROVE, ACT_EXECUTE, ACT_PROPOSE, MOD_GOV};
+use crate::event_struct::{MOD_GOV, ACT_PROPOSE};
 use crate::event_utils::publish_event;
 use crate::types::{Proposal, ProposalState};
 use soroban_sdk::{
@@ -88,8 +88,6 @@ pub fn propose(env: &Env, mut proposal: Proposal) -> u64 {
         (symbol_short!("GOV"), symbol_short!("propose")),
         proposal.id,
     );
-    let mut payload = Map::new(env);
-    payload.set(Symbol::new(env, "proposal_id"), proposal.id.into_val(env));
     publish_event(
         env,
         MOD_GOV | ACT_PROPOSE,
