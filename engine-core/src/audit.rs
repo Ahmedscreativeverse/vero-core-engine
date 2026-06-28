@@ -71,6 +71,17 @@ pub fn integrity_check(env: &Env, commitment: &StateCommitment, payload: &[u8]) 
 /// - `commitment.state_hash` does not match the expected chain derivation.
 pub fn validate_transition(env: &Env, commitment: &StateCommitment, payload: &[u8]) {
     crate::non_reentrant!(env);
+    validate_transition_inner(env, commitment, payload);
+}
+
+/// Validate and record a transition while the caller already holds the
+/// reentrancy guard. This lets orchestrating entrypoints protect a larger
+/// critical section without tripping the nested guard in `validate_transition`.
+pub(crate) fn validate_transition_inner(
+    env: &Env,
+    commitment: &StateCommitment,
+    payload: &[u8],
+) {
     assert_closed(env);
 
     // The author field must be authenticated; otherwise the commitment would be

@@ -39,7 +39,8 @@ pub enum GovError {
     InvalidStake = 8,
     AlreadyInitialized = 9,
     ProposalAlreadyExists = 10,
-    ArithmeticOverflow = 11,
+    InvalidProposal = 11,
+    ArithmeticOverflow = 12,
 }
 
 pub fn init(env: &Env, signers: Vec<Address>, threshold: u32) {
@@ -144,13 +145,37 @@ fn require_stake(env: &Env, signer: &Address) {
     }
 }
 
-    publish_event(
-        env,
-        MOD_GOV | ACT_PROPOSE,
-        proposal.id,
-        BytesN::from_array(env, &[0u8; 32]),
-    );
-    proposal.id
+/// Submit a new governance proposal in the `Pending` state.
+///
+/// The proposer must be an authenticated governance signer. Any caller-supplied
+/// approvals or state are normalised so proposals cannot be injected as already
+/// approved/executed. The proposal id is unique within the proposal map.
+pub fn propose(env: &Env, mut proposal: Proposal) -> u64 {
+    crate::non_reentrant!(env);
+    assert_closed(env);
+
+    proposal.proposer.require_auth();
+    require_signer(env, &proposal.proposer);
+    require_stake(env, &proposal.proposer);
+
+    let mut proposals = load_proposals(env);
+    if proposal.action_hash.to_array() == [0u8; 32] {
+        panic_with_error!(env, GovError::InvalidProposal);
+    }
+    if proposals.contains_key(proposal.id) {
+        panic_with_error!(env, GovError::ProposalAlreadyExists);
+    }
+
+    proposal.state = ProposalState::Pending;
+    proposal.approved_by = vec![env];
+    let proposal_id = proposal.id;
+    let action_hash = proposal.action_hash.clone();
+
+    proposals.set(proposal_id, (proposal, 0u32));
+    save_proposals(env, &proposals);
+
+    publish_event(env, MOD_GOV | ACT_PROPOSE, proposal_id, action_hash);
+    proposal_id
 }
 
 pub fn approve(env: &Env, signer: &Address, proposal_id: u64) {
