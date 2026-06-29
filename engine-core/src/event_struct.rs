@@ -46,6 +46,8 @@ pub const MOD_TREASURY: u32 = 0x03;
 pub const MOD_CB: u32 = 0x04;
 pub const MOD_BURN: u32 = 0x05;
 pub const MOD_RECOVERY: u32 = 0x06;
+pub const MOD_FEE:      u32 = 0x07;
+pub const MOD_CORE:     u32 = 0x08;
 pub const MOD_FEE: u32 = 0x07;
 
 
@@ -76,6 +78,9 @@ pub struct CompactEvent {
     pub value: u64,
 
 pub const ACT_TRIGGERED: u32 = 0x0A << 8;
+pub const ACT_FEE:       u32 = 0x0B << 8;
+pub const ACT_INIT:      u32 = 0x0C << 8;
+pub const ACT_TRANSITION: u32 = 0x0D << 8;
 pub const ACT_FEE: u32 = 0x0B << 8;
 pub const ACT_UPGRADE: u32 = 0x0C << 8;
 pub const ACT_UPDATE: u32 = 0x0D << 8;
