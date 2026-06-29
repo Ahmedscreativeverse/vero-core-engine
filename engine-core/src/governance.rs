@@ -13,8 +13,7 @@ use crate::event_struct::{ACT_APPROVE, ACT_EXECUTE, ACT_PROPOSE, MOD_GOV};
 use crate::event_utils::{publish_event, zero_hash};
 use crate::types::{Proposal, ProposalState};
 use soroban_sdk::{
-    contracterror, panic_with_error, symbol_short, token, vec, Address, BytesN, Env, Map, Symbol,
-    Vec,
+    contracterror, panic_with_error, symbol_short, token, vec, Address, Env, Map, Symbol, Vec, BytesN,
 };
 
 const KEY_PROPOSALS: Symbol = symbol_short!("PROPS");
@@ -40,7 +39,8 @@ pub enum GovError {
     InvalidStake = 8,
     AlreadyInitialized = 9,
     ProposalAlreadyExists = 10,
-    ArithmeticOverflow = 11,
+    InvalidProposal = 11,
+    ArithmeticOverflow = 12,
 }
 
 pub fn init(env: &Env, signers: Vec<Address>, threshold: u32) {
@@ -145,26 +145,25 @@ fn require_stake(env: &Env, signer: &Address) {
     }
 }
 
-/// Submit a new governance proposal.
-///
-/// The proposal is normalised to `Pending` and stored with an initial unlock
-/// ledger of `0`. The proposer must be a configured signer.
 pub fn propose(env: &Env, mut proposal: Proposal) -> u64 {
-    crate::non_reentrant!(env);
-    assert_closed(env);
-
-    proposal.proposer.require_auth();
-    require_signer(env, &proposal.proposer);
-
-    let mut proposals = load_proposals(env);
-    if proposals.contains_key(proposal.id) {
-        panic_with_error!(env, GovError::ProposalAlreadyExists);
+    let signers: Vec<Address> = env
+        .storage()
+        .instance()
+        .get(&KEY_SIGNERS)
+        .unwrap_or(vec![env]);
+    if !signers.contains(&proposal.proposer) {
+        panic_with_error!(env, GovError::NotASigner);
     }
-
+    proposal.proposer.require_auth();
+    
+    // Initialize state to Pending
     proposal.state = ProposalState::Pending;
-    proposal.approved_by = vec![env];
-    proposals.set(proposal.id, (proposal.clone(), 0u32));
-    save_proposals(env, &proposals);
+
+    let mut props = load_proposals(env);
+    let unlock_ledger = env.ledger().sequence() + TIMELOCK_LEDGERS;
+    let id = proposal.id;
+    props.set(id, (proposal.clone(), unlock_ledger));
+    env.storage().instance().set(&KEY_PROPOSALS, &props);
 
     publish_event(
         env,
@@ -176,6 +175,7 @@ pub fn propose(env: &Env, mut proposal: Proposal) -> u64 {
 }
 
 pub fn approve(env: &Env, signer: &Address, proposal_id: u64) {
+    crate::circuit_breaker::assert_closed(env);
     crate::non_reentrant!(env);
     assert_closed(env);
 
@@ -218,6 +218,7 @@ pub fn approve(env: &Env, signer: &Address, proposal_id: u64) {
 
 /// Execute an approved proposal after its timelock has elapsed.
 pub fn execute(env: &Env, proposal_id: u64) -> Proposal {
+    crate::circuit_breaker::assert_closed(env);
     crate::non_reentrant!(env);
     assert_closed(env);
 
