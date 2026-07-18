@@ -3,9 +3,7 @@ use crate::audit::compute_commitment;
 use crate::core::zk_hooks;
 use crate::types::StateCommitment;
 use soroban_sdk::{
-    symbol_short,
-    testutils::Address as _,
-    Address, Bytes, BytesN, Env, Map, Symbol,
+    symbol_short, testutils::Address as _, Address, Bytes, BytesN, Env, Map, Symbol,
 };
 
 fn commitment(env: &Env, author: &Address, sequence: u64, payload: &BytesN<32>) -> StateCommitment {
@@ -64,7 +62,10 @@ fn test_initialize() {
     // Version tracking is initialised
     assert_eq!(client.contract_version(), CONTRACT_VERSION);
     let (maj, min, pat) = client.version();
-    assert_eq!((maj, min, pat), (VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH));
+    assert_eq!(
+        (maj, min, pat),
+        (VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH)
+    );
 }
 
 #[test]
@@ -73,9 +74,11 @@ fn test_initialize_zero_address_protection() {
     let env = Env::default();
     let (contract_id, client) = setup_client(&env);
     // Trying to set the contract itself as admin should fail
-    let admin = Address::from_string(&"CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
-        .parse()
-        .unwrap_or(contract_id.clone()));
+    let admin = Address::from_string(
+        &"CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+            .parse()
+            .unwrap_or(contract_id.clone()),
+    );
     // Simpler: use contract_id directly (Soroban allows this, our check catches it)
     let res = client.try_initialize(&contract_id);
     assert!(res.is_err());
@@ -209,7 +212,7 @@ fn test_batch_update_param_success() {
     let param1_val = 100;
     let param2_key = symbol_short!("FEE2");
     let param2_val = 200;
-    
+
     let mut params = soroban_sdk::Vec::new(&env);
     params.push_back((param1_key, param1_val));
     params.push_back((param2_key, param2_val));

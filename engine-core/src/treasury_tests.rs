@@ -7,7 +7,6 @@ mod tests {
     use crate::types::TriggerKind;
     use soroban_sdk::{contract, contractimpl, Env, Map, Symbol, Val};
 
-
     #[contract]
     pub struct TestContract;
 

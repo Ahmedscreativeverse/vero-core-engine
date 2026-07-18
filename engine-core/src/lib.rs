@@ -2,7 +2,6 @@
 
 extern crate alloc;
 
-
 pub mod audit;
 pub mod burn;
 pub mod circuit_breaker;
@@ -17,9 +16,6 @@ pub mod treasury;
 pub mod types;
 pub mod upgrade;
 pub mod version;
-pub mod event_struct;
-pub mod event_utils;
-pub mod core;
 
 #[cfg(test)]
 mod governance_tests;

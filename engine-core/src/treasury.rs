@@ -1,8 +1,6 @@
 //! Treasury state snapshots and outflow time-locking.
 
-
 use crate::circuit_breaker::assert_closed;
-
 use crate::event_struct::{ACT_REQUEST, ACT_SNAPSHOT, ACT_TRIGGERED, MOD_TREASURY};
 use crate::event_utils::{publish_event, zero_hash};
 use crate::types::{TreasurySnapshot, TriggerKind};
@@ -18,22 +16,12 @@ const KEY_OUTFLOWS: Symbol = symbol_short!("OUTFLOWS");
 const MAX_BALANCE: i128 = 1_000_000_000_000_000_000;
 const MAX_ACCOUNT_COUNT: u32 = 10_000_000;
 pub const OUTFLOW_TIMELOCK_SECONDS: u64 = 24 * 60 * 60;
-
-
-/// About 7 days at 5-second ledger time, enough for off-chain indexer pickup.
-
-/// Temporary storage TTL constants (ledgers).
-
 const SNAP_TTL_THRESHOLD: u32 = 17_280;
 const SNAP_TTL_EXTEND_TO: u32 = 17_280 * 7;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-
 pub enum TreasuryKey {
-
-enum TreasuryKey {
-
     Snapshot(u64),
 }
 
@@ -47,11 +35,8 @@ pub enum TreasuryError {
     OutflowNotFound = 5,
     OutflowAlreadyExecuted = 6,
     TimelockActive = 7,
-
     DuplicateOutflow = 8,
-
-    ArithmeticOverflow = 8,
-
+    ArithmeticOverflow = 9,
 }
 
 #[contracttype]
@@ -72,10 +57,8 @@ pub fn init(env: &Env) {
         .set(&KEY_OUTFLOWS, &Map::<u64, TimelockedOutflow>::new(env));
 }
 
-/// Queue a treasury outflow behind the mandatory 24-hour delay.
 pub fn schedule_outflow(env: &Env, outflow_id: u64, amount: i128) -> u64 {
     crate::non_reentrant!(env);
-
     assert_closed(env);
 
     if amount <= 0 {
@@ -90,6 +73,7 @@ pub fn schedule_outflow(env: &Env, outflow_id: u64, amount: i128) -> u64 {
     if outflows.contains_key(outflow_id) {
         panic_with_error!(env, TreasuryError::DuplicateOutflow);
     }
+
     let outflow = TimelockedOutflow {
         id: outflow_id,
         amount,
@@ -105,10 +89,8 @@ pub fn schedule_outflow(env: &Env, outflow_id: u64, amount: i128) -> u64 {
     unlock_at
 }
 
-/// Mark an outflow executable only after its 24-hour time-lock has expired.
 pub fn execute_outflow(env: &Env, outflow_id: u64) -> TimelockedOutflow {
     crate::non_reentrant!(env);
-
     assert_closed(env);
 
     let mut outflows = load_outflows(env);
@@ -140,11 +122,6 @@ pub fn get_outflow(env: &Env, outflow_id: u64) -> Option<TimelockedOutflow> {
     load_outflows(env).get(outflow_id)
 }
 
-
-/// Record a treasury snapshot and return its ID.
-
-/// Record a treasury snapshot and return its monotonic snapshot id.
-
 pub fn record_snapshot(
     env: &Env,
     total_balance: i128,
@@ -153,15 +130,12 @@ pub fn record_snapshot(
     context: Map<Symbol, Val>,
 ) -> u64 {
     crate::non_reentrant!(env);
-
     assert_closed(env);
 
     if total_balance < 0 {
         panic_with_error!(env, TreasuryError::InvalidBalance);
     }
 
-    // Preserve the repository's prior numeric-clamping behaviour while keeping
-    // arithmetic checked around counters and timestamps.
     let total_balance = total_balance.min(MAX_BALANCE);
     let account_count = account_count.min(MAX_ACCOUNT_COUNT);
 
@@ -183,11 +157,7 @@ pub fn record_snapshot(
         context,
     };
 
-
-    let snapshot_key = make_snap_key(snapshot_id);
-
     let snapshot_key = TreasuryKey::Snapshot(snapshot_id);
-
     env.storage().temporary().set(&snapshot_key, &snapshot);
     env.storage()
         .temporary()
@@ -203,14 +173,9 @@ pub fn record_snapshot(
 }
 
 pub fn get_snapshot(env: &Env, snapshot_id: u64) -> Option<TreasurySnapshot> {
-
-    let key = make_snap_key(snapshot_id);
-    env.storage().temporary().get(&key)
-
     env.storage()
         .temporary()
         .get(&TreasuryKey::Snapshot(snapshot_id))
-
 }
 
 pub fn get_latest_snapshot(env: &Env) -> Option<TreasurySnapshot> {
@@ -230,14 +195,11 @@ pub fn get_recent_snapshots(env: &Env, count: u32) -> Vec<u64> {
     let total = snapshot_count(env);
     let mut result = Vec::new(env);
 
-    if total == 0 || count == 0 {
-
     if count == 0 || total == 0 {
-
         return result;
     }
 
-    let start = if total as u32 > count {
+    let start = if total > count as u64 {
         total - count as u64 + 1
     } else {
         1
@@ -266,14 +228,8 @@ pub fn audit_trail(env: &Env, from_id: u64) -> Vec<TreasurySnapshot> {
 
     let start = from_id.max(1).min(total);
     for id in start..=total {
-        if let Some(snap) = get_snapshot(env, id) {
-            result.push_back(snap);
-
-    let start = if from_id == 0 { 1 } else { from_id.min(total) };
-    for id in start..=total {
         if let Some(snapshot) = get_snapshot(env, id) {
             result.push_back(snapshot);
-
         }
     }
     result
@@ -294,24 +250,10 @@ fn compute_hash(env: &Env, balance: i128, account_count: u32, ledger: u32) -> By
     env.crypto().sha256(&Bytes::from_slice(env, &raw)).into()
 }
 
-
-fn make_snap_key(id: u64) -> TreasuryKey {
-    TreasuryKey::Snapshot(id)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use soroban_sdk::{contract, contractimpl, testutils::Ledger as _, Env, Map, Symbol};
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use soroban_sdk::{testutils::Ledger as _, Env, Map, Symbol, testutils::Address as _};
-
-    use soroban_sdk::{testutils::Ledger as _, Env, Map, Symbol};
-
 
     #[contract]
     pub struct TestContract;
@@ -351,12 +293,12 @@ mod tests {
     }
 
     #[test]
-fn latest_snapshot_is_none_when_empty() {
-    with_treasury_env(|env| {
-        assert!(get_latest_snapshot(env).is_none());
-        assert_eq!(snapshot_count(env), 0);
-    });
-}
+    fn latest_snapshot_is_none_when_empty() {
+        with_treasury_env(|env| {
+            assert!(get_latest_snapshot(env).is_none());
+            assert_eq!(snapshot_count(env), 0);
+        });
+    }
 
     #[test]
     #[should_panic]

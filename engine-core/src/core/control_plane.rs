@@ -202,12 +202,7 @@ impl ControlPlane {
     ) {
         crate::non_reentrant!(&env);
         crate::core::zk_hooks::register_proof(
-            &env,
-            &caller,
-            state_root,
-            proof_hash,
-            block_seq,
-            metadata,
+            &env, &caller, state_root, proof_hash, block_seq, metadata,
         );
     }
 
